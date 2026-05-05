@@ -49,10 +49,11 @@ uses
  {$ELSE ~FPC}
    WinApi.ShellAPI,
  {$ENDIF ~FPC}
-//   utilLib,
   RDUtils,
    iconsLib,
-   srvVars, srvUtils;
+   RnQ.Graphics.Utils,
+//   srvVars,
+   srvUtils;
 
 {$IFNDEF FPC}
 var
@@ -69,11 +70,15 @@ begin
     begin
       h := Result.Height;
       x := round((h-2)*perc);
-      h2 := h div 2 + 1;
+      h2 := h div 2 - 1;
+{
       result.canvas.Brush.color := clYellow;
       result.Canvas.FillRect(rect(1, h2, x+1, h-1));
       result.canvas.Brush.color := clGreen;
       result.Canvas.FillRect(rect(x+1,h2,h-1, h-1));
+}
+      FillGradient(result.Canvas.Handle, rect(1, h2, x+1, h-1), $FF20AAAA, $FF20AAAA, gdHorizontal);
+      FillGradient(result.Canvas.Handle, rect(x+1,h2,h-1, h-1), $FF008000, $FF008000, gdHorizontal);
     end;
 end; // getBaseTrayIcon
 

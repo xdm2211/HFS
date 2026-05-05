@@ -5,7 +5,9 @@ interface
 
 uses
   Windows,
+ {$IFDEF USE_MORMOT}
   mormot.core.base,
+ {$ENDIF USE_MORMOT}
   System.SysUtils, System.Types, SyncObjs,
   Graphics,
   Forms,
@@ -13,8 +15,10 @@ uses
   Controls,
   ImgList,
  {$IFNDEF FPC}
+  {$IFDEF HFS_GIF_IMAGES}
   Vcl.Imaging.gifimg,
-  {$IFNDEF HFS_GIF_IMAGES}
+  {$ELSE ~HFS_GIF_IMAGES}
+//  Vcl.Imaging.gifimg,
   Vcl.Imaging.pngImage,
   {$ENDIF HFS_GIF_IMAGES}
   Vcl.VirtualImageList, Vcl.BaseImageCollection,
@@ -24,6 +28,8 @@ uses
   ;
 
 type
+  { TIconsDM }
+
   TIconsDM = class(TDataModule)
     ImgCollection: TImageCollection;
     images: TVirtualImageList;
@@ -55,7 +61,7 @@ type
   function bmp2str(bmp: Tbitmap): RawByteString;
   function pic2str(idx: integer; imgSize: Integer): RawByteString;
   function pic2hash(idx: integer; imgSize: Integer): RawByteString; OverLoad;
-  function pic2hash(pic: RawByteString): RawByteString; OverLoad;
+  function pic2hash(const pic: RawByteString): RawByteString; OverLoad;
   function str2pic(const s: RawByteString; imgSize: Integer): integer;
   function strGif2pic(const gs: RawByteString; imgSize: Integer): integer;
   function ico2str(hndl: THandle; icoNdx: Integer; imgSize: Integer): RawByteString;
@@ -98,6 +104,13 @@ uses
   ansiStrings,
  {$ENDIF UNICODE}
   WinApi.ShellAPI,
+ {$IFNDEF USE_MORMOT}
+  RDGlobal,
+  srvUtils,
+ {$ENDIF !USE_MORMOT}
+  {$IFNDEF HFS_GIF_IMAGES}
+  litegif1,
+  {$ENDIF ~HFS_GIF_IMAGES}
   WebPHelpersD32, libwebpD,
   RnQCrypt, RDUtils,
   srvVars;
@@ -308,24 +321,53 @@ try
 finally ss.free end;
 end; // stringToPNG
 
+function LoadAGifFromStream(Stream: TStream): TBitmap;
+var
+  AGif: TGif;
+begin
+  Result := Nil;
+  if not Assigned(Stream) then
+    Exit;
+try
+  AGif := TGif.Create;
+  Try
+    AGif.LoadFromStream(Stream);
+    Result := AGif.Bitmap[0];
+  finally
+    AGif.Free;
+    end;
+except
+  FreeAndNil(Result);
+  end;
+end;
+
+
 function gif2png(const s: RawByteString): RawByteString;
 var
+  {$IFDEF HFS_GIF_IMAGES}
   gif: TgifImage;
+  {$ENDIF HFS_GIF_IMAGES}
   ss: TRawByteStringStream;
   bmp: TBitmap;
 begin
   Result := '';
   ss := TRawByteStringStream.create(s);
   try
+  {$IFDEF HFS_GIF_IMAGES}
     bmp := TBitmap.Create;
     gif := TGIFImage.Create();
     gif.loadFromStream(ss);
     bmp.Assign(gif);
+  {$ELSE ~HFS_GIF_IMAGES}
+    bmp := LoadAGifFromStream(ss);
+  {$ENDIF HFS_GIF_IMAGES}
     Result := bmp2str(bmp);
    finally
      ss.free;
      bmp.Free;
+  {$IFDEF HFS_GIF_IMAGES}
      gif.Free;
+  {$ENDIF HFS_GIF_IMAGES}
   end;
 end; // Gif2PNG
 
@@ -386,7 +428,7 @@ end;
 function WebPTryLoad: Boolean;
 var
   h: HMODULE;
-  fn: String;
+  fn: UnicodeString;
 begin
 //  fWebPVer := 0;
   fn := exePath + clibWebpName;
@@ -395,6 +437,13 @@ begin
     begin
       fn := exePath + clibWebpName2;
       h := LoadLibraryW(PWideChar(fn));
+     {$IFDEF CPUX64}
+      if h = 0 then
+        begin
+          fn := exePath + clibWebpName3;
+          h := LoadLibraryW(PWideChar(fn));
+        end;
+     {$ENDIF CPUX64}
     end;
   if h <> 0 then
   begin
@@ -487,14 +536,22 @@ begin
   pic := pic2str(idx, imgSize);
   if pic = '' then
     Exit('');
+ {$IFDEF USE_MORMOT}
   Result := IntToHexA(crc32cHash(pic), 4);
+ {$ELSE !USE_MORMOT}
+  Result := IntToHexA(getCRC(pic), 4);
+ {$ENDIF USE_MORMOT}
 end;
 
-function pic2hash(pic: RawByteString): RawByteString;
+function pic2hash(const pic: RawByteString): RawByteString;
 begin
   if pic = '' then
     Exit('');
+ {$IFDEF USE_MORMOT}
   Result := IntToHexA(crc32cHash(pic), 4);
+ {$ELSE !USE_MORMOT}
+  Result := IntToHexA(getCRC(pic), 4);
+ {$ENDIF USE_MORMOT}
 end;
 
 

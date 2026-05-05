@@ -1668,7 +1668,7 @@ var
     else if name = '%number-addresses%' then
       result:=intToStr(fs.countIPs())
     else if name = '%number-addresses-ever%' then
-      result:=intToStr(ipsEverConnected.count)
+      result:=intToStr(fs.ipsEverConnected.count)
     else if name = '%number-addresses-downloading%' then
       result:=intToStr(fs.countIPs(TRUE))
     else if name = '%number-users%' then

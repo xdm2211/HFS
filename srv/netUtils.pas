@@ -44,11 +44,11 @@ const
 type
   TBoolFunc = function(): Boolean;
 
- {$IFDEF USE_IPv6}
+ {$IFDEF USE_SSL}
   ThttpClient = class(TSslHttpCli)
- {$ELSE not USE_IPv6}
+ {$ELSE not USE_SSL}
   ThttpClient = class(THttpCli)
- {$ENDIF USE_IPv6}
+ {$ENDIF USE_SSL}
    private
     fCanHTTPS: TBoolFunc;
     fAgent: String;
@@ -122,6 +122,7 @@ begin
   if Assigned(httpCli) then
     with httpCli do
       try
+        followRelocation := True;
         fs := TMemoryStream.Create;
         rcvdStream := fs;
         if (from <> 0) or (size > 0) then
@@ -277,15 +278,19 @@ end; // httpGetRaw
 
 
 function httpGetFileWithCheck(const url, filename: string; var errMsg: String; notify: TProgressFunc=NIL): Boolean;
+{$IFDEF SUPPORT_ECC_SIGN}
 const
   sigFileExt = '.sig';
-//  tmpSubFolder = 'tmp.download';
+{$ENDIF SUPPORT_ECC_SIGN}
 var
 //  tmpFolder: String;
   tmpFile: String;
   resultFile: String;
+ {$IFDEF SUPPORT_ECC_SIGN}
   pubKey: RawByteString;
-  sign64: RawByteString;
+  sign64, sign64j: RawByteString;
+  j: TJSONObject;
+ {$ENDIF SUPPORT_ECC_SIGN}
 begin
 //  tmpFolder := ExtractFileDir(filename) + tmpSubFolder + PathDelim;
   resultFile := ExtractFileName(filename);
@@ -297,22 +302,43 @@ begin
   Result := httpGetFile(url, tmpFile, errMsg, notify);
   if Result then
     begin
+ {$IFDEF SUPPORT_ECC_SIGN}
       Result := httpGetRaw(url + sigFileExt, 5555, sign64, errMsg);
+      if not Result then
+        begin
+          Result := httpGetRaw(url + sigFileExt, 5555, sign64j, errMsg);
+          if Result then
+            begin
+              Result := ParseJSON(UTF8String(sign64j), j);
+              if Result then
+               {$IFDEF FPC}
+                sign64 := j.Get('sign', '');
+              {$ELSE !FPC}
+                sign64 := j.GetValue<RawByteString>('sign');
+              {$ENDIF FPC}
+              Result := sign64 > '';
+            end;
+        end;
+ {$ENDIF SUPPORT_ECC_SIGN}
     end;
   if Result then
     begin
+   {$IFDEF SUPPORT_ECC_SIGN}
      pubKey := getRes('RDpubkey');
      Result := verifyEccSignFile(tmpFile, sign64, pubKey);
      if not Result then
        errMsg := unsignesErr;
+   {$ENDIF SUPPORT_ECC_SIGN}
     end;
   if not result then
     begin
       if FileExists(tmpFile, false) then
         begin
           deleteFile(tmpFile);
+ {$IFDEF SUPPORT_ECC_SIGN}
           if FileExists(tmpFile + sigFileExt, false) then
             deleteFile(tmpFile + sigFileExt);
+ {$ENDIF SUPPORT_ECC_SIGN}
         end;
     end
    else
@@ -322,15 +348,17 @@ begin
 end; // httpGetFileWithCheck
 
 function httpGetFileWithCheck1(const url, filename: string; var errMsg: String; notify: TdocDataEvent=NIL): Boolean;
+{$IFDEF SUPPORT_ECC_SIGN}
 const
   sigFileExt = '.sig';
-//  tmpSubFolder = 'tmp.download';
+{$ENDIF SUPPORT_ECC_SIGN}
 var
-//  tmpFolder: String;
   tmpFile: String;
   resultFile: String;
+ {$IFDEF SUPPORT_ECC_SIGN}
   pubKey: RawByteString;
   sign64: RawByteString;
+ {$ENDIF SUPPORT_ECC_SIGN}
 begin
 //  tmpFolder := ExtractFileDir(filename) + tmpSubFolder + PathDelim;
   resultFile := ExtractFileName(filename);
@@ -340,24 +368,30 @@ begin
 //    CreateDirRecursive(tmpFolder);
 
   Result := httpGetFile1(url, tmpFile, errMsg, notify);
+ {$IFDEF SUPPORT_ECC_SIGN}
   if Result then
     begin
       Result := httpGetRaw(url + sigFileExt, 5555, sign64, errMsg);
     end;
+ {$ENDIF SUPPORT_ECC_SIGN}
   if Result then
     begin
+   {$IFDEF SUPPORT_ECC_SIGN}
      pubKey := getRes('RDpubkey');
      Result := verifyEccSignFile(tmpFile, sign64, pubKey);
      if not Result then
        errMsg := unsignesErr;
+   {$ENDIF SUPPORT_ECC_SIGN}
     end;
   if not result then
     begin
       if FileExists(tmpFile, false) then
         begin
           deleteFile(tmpFile);
+ {$IFDEF SUPPORT_ECC_SIGN}
           if FileExists(tmpFile + sigFileExt, false) then
             deleteFile(tmpFile + sigFileExt);
+ {$ENDIF SUPPORT_ECC_SIGN}
         end;
     end
    else
@@ -448,8 +482,11 @@ begin
   missing := NIL;
 //  m := NIL;
   SetLength(files, 2);
-  files[0] := GLIBEAY_300DLL_Name;
-  files[1] := GSSLEAY_300DLL_Name;
+//  files[0] := GLIBEAY_300DLL_Name;
+//  files[1] := GSSLEAY_300DLL_Name;
+  files[0] := GLIBEAY_DLL_Name;
+  files[1] := GSSLEAY_DLL_Name;
+
   for var s in files do
     if not FileExists(s) and not dllIsPresent(s) then
       addString(s, missing);

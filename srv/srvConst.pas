@@ -37,35 +37,21 @@ const
   DOWNLOAD_MIN_REFRESH_TIME: TDateTime = 1/(5*SECONDS); // 5 Hz
   sendGraphWidth = 512;
   sendGraphHeight = 32;
+  graphSamplesLenth = 3000;
+ {$IFDEF FPC}
+  maxComp = $7FFFFFFFFFFFFFFF;
+ {$ENDIF FPC}
 
   IP_SERVICES_URL = 'http://hfsservice.rejetto.com/ipservices.php';
   SELF_TEST_URL = 'http://hfstest.rejetto.com/';
 
   ETA_FRAME = 5; // time frame for ETA (in seconds)
 
+  YESNO: array [boolean] of string=('no','yes');
+
   USER_ANONYMOUS = '@anonymous';
   USER_ANYONE = '@anyone';
   USER_ANY_ACCOUNT = '@any account';
-
-  DEFAULT_MIME = 'application/octet-stream';
-  DEFAULT_MIME_TYPES: array [0..29] of string = (
-    '*.htm;*.html', 'text/html',
-    '*.jpg;*.jpeg;*.jpe', 'image/jpeg',
-    '*.gif', 'image/gif',
-    '*.png', 'image/png',
-    '*.bmp', 'image/bmp',
-    '*.ico', 'image/x-icon',
-    '*.mpeg;*.mpg;*.mpe', 'video/mpeg',
-    '*.avi', 'video/x-msvideo',
-    '*.txt', 'text/plain',
-    '*.css', 'text/css',
-    '*.js',  'text/javascript',
-    '*.mkv', 'video/x-matroska',
-    '*.webp', 'image/webp',
-    '*.heic', 'image/heic',
-    '*.heif', 'image/heif'
-  );
-  thumbsShowToExtDefaultStr = '.jpg; .jpeg; .png; .gif; .webp; .bmp; .ico';
 
   DOW2STR: array [1..7] of string=( 'Sun','Mon','Tue','Wed','Thu','Fri','Sat' );
   MONTH2STR: array [1..12] of string = ( 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec' );
@@ -86,7 +72,9 @@ type
   TUnicodeStringDynArray = TStringDynArray;
   TUnicodeSearchRec = TSearchRec;
   TProcedureOfObject = procedure() of Object;
+  PUnicodeChar = PChar;
  {$ENDIF FPC}
+  TContentTypeType = RawByteString;
 
   Paccount = ^Taccount;
 	Taccount = record   // user/pass profile
@@ -107,6 +95,31 @@ type
 const
   ILLEGAL_FILE_CHARS = [#0..#31,'/','\',':','?','*','"','<','>','|'];
   ENCODED_TABLE_HEADER = 'this is an encoded table'+CRLF;
+  pngMime = 'image/png';
+  webpMime = 'image/webp';
+
+
+  DEFAULT_MIME = TContentTypeType('application/octet-stream');
+  DEFAULT_MIME_TYPES: array [0..31] of string = (
+    '*.htm;*.html', 'text/html',
+    '*.jpg;*.jpeg;*.jpe', 'image/jpeg',
+    '*.gif', 'image/gif',
+    '*.png', pngMime, //'image/png',
+    '*.bmp', 'image/bmp',
+    '*.ico', 'image/x-icon',
+    '*.mpeg;*.mpg;*.mpe', 'video/mpeg',
+    '*.avi', 'video/x-msvideo',
+    '*.txt', 'text/plain',
+    '*.css', 'text/css',
+    '*.js',  'text/javascript',
+    '*.mkv', 'video/x-matroska',
+    '*.webp', webpMime, //'image/webp',
+    '*.heic', 'image/heic',
+    '*.heif', 'image/heif',
+    '*.zip', 'application/zip'
+  );
+  thumbsShowToExtDefaultStr = '.jpg; .jpeg; .png; .gif; .webp; .bmp; .ico';
+  ZIP_MIME = TContentTypeType('application/zip');
 
 const // Messages
   MSG_SPEED_KBS = '%.1f kB/s';

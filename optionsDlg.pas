@@ -171,7 +171,7 @@ implementation
 uses
   utilLib, HSlib, strUtils, listSelectDlg, fileLib, main,
   netUtils, parserLib,
-  srvClassesLib, srvConst, srvUtils, srvVars;
+  serverLib, srvClassesLib, srvConst, srvUtils, srvVars;
 
 var
   lastAccountSelected: integer = -1; // stores the previous selection index

@@ -17,7 +17,8 @@ uses
     JSON,
    {$ENDIF FPC}
  {$ENDIF USE_MORMOT}
-  srvClassesLib;
+  srvClassesLib,
+  srvConst;
 
 type
 
@@ -30,7 +31,7 @@ type
      //no more used attributes have to stay for backward compatibility with
     { VFS files }
     FA_NO_MORE_USED1,
-  	FA_NO_MORE_USED2,
+    FA_NO_MORE_USED2,
     FA_TEMP,            // this is a temporary item and is not part of the VFS
     FA_HIDDENTREE,      // recursive hidden
     FA_LINK,            // redirection
@@ -55,9 +56,6 @@ type
   TfileCallback = function(f: Tfile; childrenDone: boolean; par, par2: IntPtr): TfileCallbackReturn;
 
   TfileAction = (FA_ACCESS, FA_DELETE, FA_UPLOAD);
-
-  TLoadPrefs = set of (lpION, lpHideProt, lpSysAttr, lpHdnAttr, lpSnglCmnt, lpFingerPrints, lpRecurListing, lpOEMForION,
-                       lpDeletePartialUploads, lpNumberFilesOnUpload, lpUseCommentAsRealm);
 
   TIconsIdxArray = array of integer;
 
@@ -94,10 +92,11 @@ type
     function  toggle(att: TfileAttribute): Boolean;
     function  isFolder(): Boolean; inline;
     function  isFile(): Boolean; inline;
-    function  isFileOrFolder():boolean; inline;
-    function  isRealFolder():boolean; inline;
-    function  isVirtualFolder():boolean; inline;
-    function  isEmptyFolder(loadPrefs: TLoadPrefs; cd:TconnDataMain=NIL):boolean;
+    function  isFileOrFolder(): Boolean; inline;
+    function  isRealFolder(): Boolean; inline;
+    function  isVirtualFolder(): Boolean; inline;
+    function  isEmptyFolder(loadPrefs: TLoadPrefs; cd: TconnDataMain=NIL):boolean;
+    function  isArchive(): Boolean;
     function  isRoot():boolean; inline;
     function  isLink():boolean; inline;
     function  isTemp():boolean; inline;
@@ -109,7 +108,7 @@ type
     function  getSystemIcon(): integer;
     function  gotSystemIcon(): boolean;
     function  getHasThumb: Boolean;
-    function  getThumb(var str: TStream; var format: String; size: Integer; AcceptWebP: Boolean = false): Boolean;
+    function  getThumb(var str: TStream; var format: TContentTypeType; size: Integer; AcceptWebP: Boolean = false): Boolean;
     function  getAccountsFor(action: TfileAction; specialUsernames: Boolean=FALSE; outInherited: Pboolean=NIL): TstringDynArray;
     function  accessFor(const username, password: String): Boolean; overload;
     function  accessFor(cd: TconnDataMain): Boolean; overload;
@@ -218,16 +217,8 @@ const
   FK_UPLOADFILTER = 26;
   FK_DELETEACCOUNTS = 27;
 
-type
-  TstringIntPairs = array of record
-    str: string;
-    int: integer;
-   end;
-
-
 var
   defSorting: string;          // default sorting, browsing
-  iconMasks: TstringIntPairs;
 
 implementation
 
@@ -236,17 +227,17 @@ uses
   RegExpr,
   RDUtils, RDFileUtil,
   RDSysUtils,
-  RnQZip,
+  RD.Zip,
 //  RnQJSON,
  {$IFDEF USE_MORMOT}
    mormot.core.json,
    mormot.core.text,
-  {$ELSE}
    mormot.core.datetime,
+  {$ELSE}
  {$ENDIF USE_MORMOT}
   serverLib,
   HSUtils,
-  srvConst, srvUtils, srvVars,
+  srvUtils, srvVars,
   IconsLib,
   parserLib
   ;
@@ -275,35 +266,38 @@ end; // escapeIon
 
 function unescapeIon(s: String): String;
 begin
-if ansiEndsStr(#4#$C2, s) then
-  begin
-  setLength(s, length(s)-2);
-  s:=unescapeNL(s);
-  end;
-result:=s;
+  if ansiEndsStr(#4#$C2, s) then
+   begin
+    setLength(s, length(s)-2);
+    s:=unescapeNL(s);
+   end;
+  result := s;
 end; // unescapeIon
 
-procedure loadIon(const lp: TLoadPrefs; const path: String; comments: TStringList);
+function loadIon(const lp: TLoadPrefs; const path: String; comments: TStringList): Boolean;
 var
   s, l: UnicodeString;
   fn: string;
 begin
 //if not mainfrm.supportDescriptionChk.checked then exit;
-s:=loadDescriptionFile(lp, path);
-while s > '' do
-  begin
-  l:=chopLine(s);
-  if l = '' then continue;
-  fn:=chop(nonQuotedPos(' ', l), l);
-  comments.add(dequote(fn)+'='+trim(unescapeIon(l)));
-  end;
+  s := loadDescriptionFile(lp, path);
+  Result := s > '';
+  if Result then
+  while s > '' do
+   begin
+    l := chopLine(s);
+    if l = '' then
+      continue;
+    fn := chop(nonQuotedPos(' ', l), l);
+    comments.add(dequote(fn)+'='+trim(unescapeIon(l)));
+   end;
 end; // loadIon
 
 function isCommentFile(const lp: TLoadPrefs; const fn: String): Boolean;
 begin
-result:=(fn=COMMENTS_FILE)
-  or (lpSnglCmnt in lp) and isExtension(fn, COMMENT_FILE_EXT)
-  or (lpION in lp) and sameText('descript.ion',fn)
+  result := (fn=COMMENTS_FILE)
+    or (lpSnglCmnt in lp) and isExtension(fn, COMMENT_FILE_EXT)
+    or (lpION in lp) and sameText('descript.ion',fn)
 end; // isCommentFile
 
 function isFingerprintFile(const lp: TLoadPrefs; const fn: String): Boolean;
@@ -342,10 +336,13 @@ end; // getFiles
 
 function freeIfTemp(var f:Tfile):boolean; inline;
 begin
-try
-  result:=assigned(f) and f.isTemp();
-  if result then freeAndNIL(f);
-except result:=FALSE end;
+  try
+    result := assigned(f) and f.isTemp();
+    if result then
+     freeAndNIL(f);
+   except
+    result := FALSE
+  end;
 end; // freeIfTemp
 
 function accountAllowed(action: TfileAction; cd: TconnDataMain; f: Tfile): Boolean;
@@ -880,7 +877,8 @@ begin
       addVal(commonFields, FK_NAME, self.name);
      {$IFDEF FPC}
      //commonFields.Add(IntToStr(FK_ADDEDTIME), self.atime);
-      rs := DateTimeToIso8601(self.atime, True);
+//      rs := DateTimeToIso8601(self.atime, True);
+      rs := DateToISO8601(self.atime, True);
       commonFields.Add(IntToStr(FK_ADDEDTIME), rs);
      {$ELSE FPC}
       commonFields.AddPair(IntToStr(FK_ADDEDTIME), self.atime);
@@ -994,7 +992,9 @@ var
        o.Add(':');
        u := str2hex(val);
        o.Add('"');
-       o.AddNoJsonEscapeUtf8(u);
+       if u > '' then
+         //o.AddNoJsonEscapeUtf8(u);
+         o.AddNoJsonEscapeForcedNoUnicode(@u[1], Length(u));
        o.Add('"}', TTextWriterKind.twNone);
        Result := True;
       end;
@@ -1059,6 +1059,7 @@ var
       jw.AddComma;
   end;
 var
+  infoFields: TJsonWriter;
   commonFields: TJsonWriter;
   subFiles: RawByteString;
   ii: TIconsIdxArray;
@@ -1101,12 +1102,17 @@ begin
       fFilesTree.ForAllSubNodes(Self, procedure (f: TObject)
           var
             ff: TFile;
+            r: RawByteString;
           begin
             ff := f as TFile;
             if Assigned(ff) then
               begin
-                subFilesJ.AddNoJsonEscapeUtf8(ff.getVFSJZ2(ii)); // recursion
-                subFilesJ.AddComma;
+                r := ff.getVFSJZ2(ii);
+                if r > '' then
+                  begin
+                    subFilesJ.AddNoJsonEscapeForcedNoUnicode(@r[1], Length(r)); // recursion
+                    subFilesJ.AddComma;
+                  end;
               end;
           end);
      {$ENDIF FPC}
@@ -1126,7 +1132,7 @@ begin
       if subFiles <> '' then
        begin
         commonFields.Add(['{"nodes":'], TTextWriterKind.twNone);
-        commonFields.AddNoJsonEscapeUtf8(subFiles);
+        commonFields.AddNoJsonEscapeForcedNoUnicode(@subFiles[1], Length(subFiles));
         commonFields.Add(['}'], TTextWriterKind.twNone);
         commonFields.AddComma;
        end;
@@ -1136,7 +1142,17 @@ begin
           commonFields.AddComma;
         end;
       commonFields.CancelLastComma;
-      Result := RawByteString('{"root":[')+ commonFields.Text + ']}';
+
+      infoFields := TJsonWriter.CreateOwnedStream();
+      addval(infoFields, FK_FORMAT_VER, CURRENT_VFS_FORMAT);
+      infoFields.AddComma;
+      addval(infoFields, FK_HFS_VER, VERSION);
+      infoFields.AddComma;
+      addval(infoFields, FK_HFS_BUILD, VERSION_BUILD);
+      infoFields.AddComma;
+
+      Result := RawByteString('{"root":[') + infoFields.Text + commonFields.Text + ']}';
+      infoFields.Free;
     end
    else
     begin
@@ -1161,7 +1177,7 @@ begin
        begin
         commonFields.AddComma;
         commonFields.Add(['{"nodes":'], TTextWriterKind.twNone);
-        commonFields.AddNoJsonEscapeUtf8(subFiles);
+        commonFields.AddNoJsonEscape(@subFiles[1], Length(subFiles));
         commonFields.Add(['}'], TTextWriterKind.twNone);
        end;
       Result := RawByteString('{"')+ RawByteString(IntToStr(FK_NODE)) + RawByteString('":[')+ commonFields.Text + ']}';
@@ -1205,7 +1221,7 @@ end;
 function Tfile.same(f: Tfile): boolean;
 begin result:=(self = f) or (resource = f.resource) end;
 
-function Tfile.toggle(att: TfileAttribute): boolean;
+function Tfile.toggle(att: TfileAttribute): Boolean;
 begin
   if att in flags then
     exclude(flags, att)
@@ -1214,29 +1230,54 @@ begin
   result := att in flags
 end;
 
-function Tfile.isRoot():boolean;
-begin result:=FA_ROOT in flags end;
+function Tfile.isRoot(): Boolean;
+begin
+  result := FA_ROOT in flags
+end;
 
-function Tfile.isFolder():boolean;
-begin result:=FA_FOLDER in flags end;
+function Tfile.isFolder(): Boolean;
+begin
+  result:=FA_FOLDER in flags
+end;
 
-function Tfile.isLink():boolean;
-begin result:=FA_LINK in flags end;
+function Tfile.isLink(): Boolean;
+begin
+  result:=FA_LINK in flags
+end;
 
-function Tfile.isTemp():boolean;
-begin result:=FA_TEMP in flags end;
+function Tfile.isTemp(): Boolean;
+begin
+  result := FA_TEMP in flags
+end;
 
-function Tfile.isFile():boolean;
-begin result:=not ((FA_FOLDER in flags) or (FA_LINK in flags)) end;
+function Tfile.isFile(): Boolean;
+begin
+  result := not ((FA_FOLDER in flags) or (FA_LINK in flags))
+end;
+
+function Tfile.isArchive(): Boolean;
+begin
+  Result := not ((FA_FOLDER in flags) or (FA_LINK in flags));
+  if Result then
+    begin
+      Result := AnsiSameText(ExtractFileExt(self.resource), '.zip');
+    end;
+end;
 
 function Tfile.isFileOrFolder():boolean;
-begin result:=not (FA_LINK in flags) end;
+begin
+  result := not (FA_LINK in flags)
+end;
 
 function Tfile.isRealFolder():boolean;
-begin result:=(FA_FOLDER in flags) and not (FA_VIRTUAL in flags) end;
+begin
+  result := (FA_FOLDER in flags) and not (FA_VIRTUAL in flags)
+end;
 
 function Tfile.isVirtualFolder():boolean;
-begin result:=(FA_FOLDER in flags) and (FA_VIRTUAL in flags) end;
+begin
+  result := (FA_FOLDER in flags) and (FA_VIRTUAL in flags)
+end;
 
 function Tfile.isEmptyFolder(loadPrefs: TLoadPrefs; cd: TconnDataMain=NIL): Boolean;
 var
@@ -1596,7 +1637,7 @@ begin
   fHasThumb := Result;
 end;
 
-function Tfile.getThumb(var str: TStream; var format: String; size: Integer; AcceptWebP: Boolean = false): Boolean;
+function Tfile.getThumb(var str: TStream; var format: TContentTypeType; size: Integer; AcceptWebP: Boolean = false): Boolean;
 var
   b: RawByteString;
   e, s: Integer;

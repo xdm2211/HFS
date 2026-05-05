@@ -39,6 +39,8 @@ def 3.0
 	}
 	</script>
 	<script type="text/javascript" src="/~lib.js"></script>
+	<script type="text/javascript" src="/~music.js"></script>
+	<script type="text/javascript" src="/~preview.js"></script>
 
 []
 {.$common-head.}
@@ -56,7 +58,10 @@ def 3.0
 	</div>
 </body>
 <script>
-document.querySelector("main") || music();
+  music();
+  archiveContent();
+  initPreview();
+document.querySelector("main");
 </script>
 </html>
 
@@ -400,19 +405,19 @@ z-index:1; /* without this .item-menu will be over*/ }
 #menu-bar { padding:0.2em 0 }
 
 @media (min-width: 50em) {
-#toggleTs { display: none }
+  #toggleTs { display: none }
 }
 @media (max-width: 50em) {
-#menu-panel button { padding: .4em .6em; }
-.additional-panel button span,
-#menu-bar button span { display:none } /* icons only */
-#menu-bar i { font-size:120%; } /* bigger icons */
-#menu-bar button { width: 3em; max-width:10.7vw; padding: .4em 0; }
-.hideTs .item-ts { display:none }
+  #menu-panel button { padding: .4em .6em; }
+  .additional-panel button span,
+  #menu-bar button span { display:none } /* icons only */
+  #menu-bar i { font-size:120%; } /* bigger icons */
+  #menu-bar button { width: 3em; max-width:10.7vw; padding: .4em 0; }
+  .hideTs .item-ts { display:none }
 }
 
 #upload-panel { font-size: 88%;}
-#upload-progress { margin-top:.5em; display:none; }
+#upload-progress { margin-top:.5em; display:block; }
 #upload-progress progress { width:10em; position:relative; top:.1em; }
 #progress-text { position: absolute; color: #000; font-size: 80%; margin-left:.5em; z-index:1; }
 #upload-results a { color:#b0c2d4; }
@@ -421,6 +426,43 @@ z-index:1; /* without this .item-menu will be over*/ }
 #upload-results { max-height: calc(100vh - 11em); overflow: auto;}
 #upload-panel>button { margin: auto; display: block; margin-top:.8em;} /* center it*/
 
+.archive-items[collapsed] { display:none }
+.archive-items[expanded] { display:block }
+div.archive-list-item { width:90%;display:list-item }
+div.archive-item { display:inline; width:90% }
+
+.image-link {
+    color: #0066cc;
+    text-decoration: none;
+    position: relative;
+}
+
+.preview-wrapper {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    transform: translateY(4px);
+    z-index: 9999;
+    pointer-events: none;
+    display: none;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid #ddd;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 4px;
+    border-radius: 3px;
+}
+
+.preview-wrapper img {
+    display: block;
+    max-width: 200px;
+    max-height: 150px;
+    width: auto;
+    height: auto;
+}
+
+.no-wrap-text {
+   white-space: nowrap;
+  }
 [nomacros_style.css|public|no log|cache]
 .l{display:inline-block;width:60%}
 .t{float:right;color:gray}
@@ -549,12 +591,17 @@ z-index:1; /* without this .item-menu will be over*/ }
 #upload-panel>button { margin: auto; display: block; margin-top:.8em;} /* center it*/
 
 [file=folder=link|private]
-<div class='item item-type-%item-type% {.if|{.get|can access.}||cannot-access.} {.if|{.get|can archive item.}|can-archive.} {.if|{.get|has thumbnail.}|has-thumbnail.}'>
+<div class='item item-type-%item-type% {.if|{.get|can access.}||cannot-access.} {.if|{.get|can archive item.}|can-archive.} {.if|{.get|has thumbnail.}|has-thumbnail.} {.if|{.get|is archive.}|item-is-archive.}'>
 	<div class="item-link">
-		<a href="%item-url%">
+		<a href="%item-url%" {.if|{.get|has thumbnail.}|class="image-link".} {.if|{.get|is archive.}|class="archive-link".}>
 			<img src="%item-icon%" />
 			%item-name%
 		</a>
+{.if|{.get|is archive.}|
+		<a href="#" class="archive-spoiler">
+                   >
+		</a>
+.}
 	</div>
 	<div class='item-props'>
 		<span class="item-ts"><i class='fa fa-clock'></i> {.cut||-3|%item-modified%.}</span>
@@ -983,6 +1030,256 @@ function showLoading(show){
 	return ret
 }
 
+[music.js|public|no log|cache]
+function music() {
+    let shuffle = location.search === '?shuffle';
+    let audio = new Audio();
+    let links = [];
+    let currentIndex = 0;
+    
+    // Стили для панели управления
+    const styles = `
+        .music-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #ddd;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #777;
+            border-radius: 5px;
+            transition: width 0.3s;
+        }
+        
+        .time {
+            font-size: 0.9em;
+        }
+    `;
+
+    // Adding style into document
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.innerHTML = styles;
+    document.head.appendChild(style);
+
+    // Collecting all links to media
+    document.querySelectorAll("a[href]").forEach(function(link) {
+        let href = link.getAttribute('href');
+        let ext = href.toLowerCase().split('.').pop();
+        
+        if (['mp3', 'ogg', 'm4a', 'wma', 'aac', 'flac'].includes(ext)) {
+            links.push(href);
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                playTrack(href);
+            });
+        }
+    });
+
+    // Creating control panel
+    let controlContainer = document.querySelector("#actions") || 
+    document.querySelector("#menu-bar") || 
+    document.body;
+
+    let controlPanel = document.createElement('div');
+    controlPanel.classList.add('music-control');
+
+    // Play button
+    let playButton = document.createElement('button');
+    playButton.textContent = '▶';
+    playButton.classList.add('play');
+    playButton.classList.add('no-wrap-text');
+
+    // Progress bar
+    let progressBar = document.createElement('div');
+    progressBar.classList.add('progress-bar');
+
+    let progressFill = document.createElement('div');
+    progressFill.classList.add('progress-fill');
+    progressBar.appendChild(progressFill);
+
+    // current time
+    let currentTime = document.createElement('span');
+    currentTime.classList.add('time');
+
+    // Total time
+    let totalTime = document.createElement('span');
+    totalTime.classList.add('time');
+
+    // Addeding elements into panel
+    controlPanel.appendChild(playButton);
+    controlPanel.appendChild(progressBar);
+    controlPanel.appendChild(currentTime);
+    controlPanel.appendChild(totalTime);
+
+    if (links.length > 0) {
+        controlContainer.appendChild(controlPanel);
+    }
+
+    audio.addEventListener('timeupdate', function() {
+        let percent = (100 / audio.duration) * audio.currentTime;
+        progressFill.style.width = percent + '%';
+        
+        currentTime.textContent = formatTime(audio.currentTime);
+        totalTime.textContent = formatTime(audio.duration);
+    });
+
+    progressBar.addEventListener('click', function(e) {
+        let clickX = e.offsetX;
+        let progressWidth = progressBar.getBoundingClientRect().width;
+        let seekTo = (clickX * audio.duration) / progressWidth;
+        audio.currentTime = seekTo;
+    });
+
+    playButton.onclick = function() {
+        if (audio.paused) {
+            if (!(audio.src==audio.src) || !audio.src) {
+                audio.src = shuffle ? 
+                links[Math.floor(Math.random() * links.length)] : 
+                links[currentIndex];
+            }
+            audio.play();
+            this.textContent = '❚ ❚';
+        } else {
+            audio.pause();
+            this.textContent = '▶';
+        }
+    };
+
+    audio.addEventListener('ended', function() {
+        currentIndex = (currentIndex + 1) % links.length;
+        if (!isNaN(currentIndex)){
+         playTrack(links[currentIndex]);
+        }
+    });
+
+    audio.addEventListener('error', function() {
+        console.error('Error playing:', audio.error);
+        let lPrevIndex = currentIndex;
+        currentIndex = (currentIndex + 1) % links.length;
+        if (!isNaN(currentIndex) && lPrevIndex!=currentIndex){
+          playTrack(links[currentIndex]);
+        }
+    });
+
+    function playTrack(url) {
+      if (url == url){
+        try {
+            audio.src = url;
+            audio.load();
+            audio.play();
+            document.title = decodeURI(url);
+        } catch (error) {
+            console.error('Error loading track:', error);
+        }
+      }
+    }
+
+    function formatTime(seconds) {
+        let min = Math.floor(seconds / 60);
+        let sec = Math.floor(seconds % 60);
+        return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    // Restore last state
+    if (localStorage.getItem('last')) {
+        let lastState = localStorage.getItem('last').split('#t=');
+        audio.src = lastState[0];
+        audio.currentTime = parseFloat(lastState[1]);
+    }
+
+    // Save state
+    window.addEventListener('beforeunload', function() {
+        localStorage.setItem('last', audio.src + '#t=' + audio.currentTime);
+    });
+
+    // Support Media Session API
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('nexttrack', function() {
+            audio.currentTime = 0;
+            audio.play();
+        });
+    }
+}
+
+[preview.js|public|no log|cache]
+/* =======================================================
+   Hover preview for links like <a class="image-link">
+   ======================================================= */
+
+function initPreview() {
+    const PREVIEW_OFFSET_X = 20;
+    const PREVIEW_OFFSET_Y = 20;
+
+    const previewContainer = document.createElement('div');
+    previewContainer.className = 'preview-wrapper';
+    document.body.appendChild(previewContainer);
+
+    const previewImg = document.createElement('img');
+    previewContainer.appendChild(previewImg);
+
+    function onLinkHover(e) {
+        const link = e.currentTarget;
+        const href = link.href;
+        const thumbSrc = href + (href.includes('?') ? '&' : '?') + 'mode=thumb';
+
+        previewImg.src = thumbSrc;
+
+        previewImg.onload = () => {
+            previewContainer.style.display = 'block';
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+            const rect = previewContainer.getBoundingClientRect();
+
+            let left  = e.pageX + PREVIEW_OFFSET_X;
+            let top   = e.pageY + PREVIEW_OFFSET_Y;
+
+            if (left + rect.width > winW) left = e.clientX - rect.width - PREVIEW_OFFSET_X;
+            if (top + rect.height > e.pageY-e.screenY + winH) top = e.pageY-e.screenY + winH - rect.height - PREVIEW_OFFSET_Y;
+
+            previewContainer.style.left = `${left}px`;
+            previewContainer.style.top = `${top}px`;
+        };
+
+        previewImg.onerror = () => {
+            previewContainer.style.display = 'none';
+        };
+    }
+
+    function onLinkLeave() {
+        previewContainer.style.display = 'none';
+    }
+
+    const links = document.querySelectorAll('.image-link');
+    links.forEach(link => {
+        link.addEventListener('mouseenter', onLinkHover);
+        link.addEventListener('mouseleave', onLinkLeave);
+        link.addEventListener('mousemove', e => {
+            const rect = previewContainer.getBoundingClientRect();
+            let left  = e.pageX + PREVIEW_OFFSET_X;
+            let top   = e.pageY + PREVIEW_OFFSET_Y;
+
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+
+            if (left + rect.width > winW) left = e.clientX - rect.width - PREVIEW_OFFSET_X;
+            if (top + rect.height > e.pageY-e.screenY + winH) top = e.pageY-e.screenY + winH - rect.height - PREVIEW_OFFSET_Y;
+
+            previewContainer.style.left = `${left}px`;
+            previewContainer.style.top = `${top}px`;
+        });
+    });
+};
+
 [lib.js|public|no log|cache]
 
 {.$login.js.}
@@ -1286,45 +1583,67 @@ function sendFiles(files, done) {
     for (var i = 0; i < files.length; i++)
         formData.append('file', files[i])
 
-	var xhr = new XMLHttpRequest();
-	xhr.open('POST', '');
-	xhr.send(formData);
-	xhr.onload = data=> {
-		try {
-			data = JSON.parse(data)
-			data.forEach(r=> {
-				let e = $sel('#upload-'+(r.err ? 'ko' : 'ok'))
-				e.textContent = +e.textContent +1
-				$toggle(e.parentNode, true) // only for 'ko'
-				e = r.err ? $create('span', { a:{title:r.err}, h:'<i class="fa fa-ban"></i> '+ r.name })
-					: $create('a', {
-						a: { href:r.url, title:"{.!Size.}: '+r.size+'&#013;{.!Speed.}: '+r.speed+'B/s" },
-						h: '<i class="fa fa-'+(r.err ? 'ban' : 'check-circled')+'"></i> '+r.name
-					})
-				$sel('#upload-results').appendChild(e)
-			})
-		}
-		catch(e){
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '');
+    xhr.send(formData);
+    xhr.onload = function(data) {
+      // Check return status
+      if (xhr.status === 200) {
+        try {
+          d2 = JSON.parse(xhr.responseText)
+          d2.forEach(r=> {
+            let e = $sel('#upload-'+(r.err ? 'ko' : 'ok'))
+            e.textContent = +e.textContent +1
+            $toggle(e.parentNode, true) // only for 'ko'
+            e = r.err ? $create('span', { a:{title:r.err}, h:'<i class="fa fa-ban"></i> '+ r.name })
+                  : $create('a', {
+			a: { href:r.url, title:"{.!Size.}: "+r.size+'&#013;{.!Speed.}: '+r.speed+"B/s" },
+			h: '<i class="fa fa-'+(r.err ? 'ban' : 'check-circled')+'"></i> '+r.name
+		})
+			$sel('#upload-results').appendChild(e)
+           })
+         }
+        catch(e){
 			console.error(e)
 			showError('Invalid server reply')
-		}
-		done()
-	}
-	xhr.onerror = done
+         }
+       } else {
+              console.error('Server error: ' + xhr.status)
+              showError('Server error')
+       }
+       done()
+      }
 
-	var e = $sel('#upload-progress')
-	var prog = $sel('progress', e)
+    xhr.onerror = function() {
+          done()
+     }
+
+    var e = $sel('#upload-progress')
+    var prog = $sel('progress', e)
 	prog.value = 0
-	$toggle(e)
+	$toggle(e, true)
 	var last = 0
 	var now = 0
-	xhr.onprogress = ev=>
-		prog.value = (now = ev.loaded) / ev.total
-	var h = setInterval(()=>{
+
+    xhr.upload.onprogress = function(ev){
+      if (ev.lengthComputable) {
+        let valueToSet = (now = ev.loaded) / ev.total;
+        // Check if the value is a valid, finite number
+        if (Number.isFinite(valueToSet)) {
+          prog.value = valueToSet;
+         } else {
+          // Handle the error or set a default value, like 0
+          console.error("Invalid value provided for progress bar:", valueToSet);
+          prog.value = 0;
+         }
+       }
+     }
+    var h = setInterval(()=>{
 		$sel('#progress-text').textContent = smartSize(now)+'B @ '+smartSize(now-last)+'/s'
 		last = now
 	},1000)
-	xhr.onload = ev=> {
+
+    xhr.upload.onload = ev=> {
 		$toggle(e)
 		clearInterval(h)
 	}
@@ -1345,6 +1664,15 @@ function smartSize(n, options) {
 	return round(n, options.decimals)
 		+orders[i]
 }//smartSize
+
+function formatBytes(bytes, decimals = 2) {
+    if (!+bytes) return '0 Bytes'
+    const k = 1024
+    const dm = decimals < 0 ? 0 : decimals
+    const sizes = ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
+}//formatBytes
 
 function round(v, digits) {
 	return !digits ? Math.round(v) : Math.round(v*Math.pow(10,digits)) / Math.pow(10,digits)
@@ -1472,8 +1800,8 @@ $domReady(()=>{
         mustSelect() && deleteFiles(getSelectedItemsName()) )
     $toggle('delete-selection', $sel('.can-delete'))
     $click('#archive', ()=>
-        mustSelect() && ask("{.!Downloading many files as archive can be a lengthy operation, and the result is a TAR file. Continue?.}", ()=>
-            submit({ selection: getSelectedItemsName() }, "?mode=archive") ))
+        mustSelect() && ask("{.!Downloading many files as archive can be a lengthy operation, and the result is a ZIP file. Continue?.}", ()=>
+            submit({ selection: getSelectedItemsName(), nofolders: true }, "?mode=archive&recursive") ))
 
     $msel('#files .cannot-access .item-link img', x=>
 		x.insertAdjacentElement('afterend', $icon('lock', "{.!No access.}") ))
@@ -1500,10 +1828,122 @@ $domReady(()=>{
     selectionChanged()
 })//$domReady
 
-function music(){ //C DJ BSD2License
-  var e=1,n=new Audio,o=[[]],c=0,r=[];
-  document.querySelectorAll("a[href]").forEach(function(t,e){
-     var n;[".mp3",".ogg",".m4a",".wma",".aac","flac",".Mp3",".MP3",".OGG",".M4A",".WMA",".AAC","FLAC"].indexOf(t.getAttribute("href").slice(-4))+1&&(o[0].push(t.getAttribute("href")),t.addEventListener("click",function(e){e.preventDefault(),i(t.getAttribute("href"))}),(n=document.querySelector('input[value="'+t.getAttribute("href")+'"]'))&&(n.checked=!0))}),"?shuffle"==location.search&&(e=!e),e&&(o[0]=o[0].sort(function(e,t){return.5-Math.random()}));var t,u=document.querySelector("#actions")||document.querySelector("#menu-bar")||document.querySelector("body"),a=document.createElement("button");function i(e){e.match(/m3u8?$/)?fetch(e).then(function(e){e.text().then(function(e){i(e.match(/^(?!#)(?!\s).*$/gm).map(encodeURI)[0])})}):(n.src=e,n.play(),document.title=decodeURI(e))}a.textContent="\u25BA",a.setAttribute("class","play"),a.onclick=function(){n.paused?(n.src||(n.src=(e?o[0]:t)[0]),n.play()):n.pause()},a.oncontextmenu=function(e){e.preventDefault(),n.onended()},o[0].length&&!document.querySelector("button.play")&&u.appendChild(a),n.onended=function(){var e=n.getAttribute("src");do{e=o[c][o[c].indexOf(e)+1];var t=document.querySelector('input[value="'+e+'"]')}while(t&&!t.checked);e?i(e):c?(c--,n.src=r[c],n.onended()):i(o[0][0])},n.onpause=function(){document.querySelector("button.play").textContent="\u25BA"},n.onplay=function(){document.querySelector("button.play").textContent="\u2759 \u2759"},o[0].length&&(window.onbeforeunload=function(e){localStorage.last=n.getAttribute("src")+"#t="+n.currentTime},t=localStorage.last.split("#t="),n.preload="none",n.src=(e?o[0]:t)[0],(t=1e3*location.search.slice(1))&&setTimeout(function(){document.querySelector("button.play").click()},t)),n.onerror=function(){n.onended()},"mediaSession"in navigator&&navigator.mediaSession.setActionHandler("nexttrack",function(){n.onended()})}
+function archiveContent(){
+  document.querySelectorAll("a[href].archive-spoiler").forEach(function(t,e){
+     var n;
+     t.addEventListener("click", function(e){
+        e.preventDefault() //,i(t.getAttribute("href"))
+  const linkItem = t.parentElement;
+  const ul = linkItem.parentElement;
+  let itemsCount = 0
+  if (ul.hasAttribute("archive-items-count")) {
+    var menuItems = ul.getElementsByClassName("archive-items")
+    if (menuItems.length > 0) {
+     menuItem = menuItems[0]
+     if (menuItem.hasAttribute("expanded")){
+       menuItem.removeAttribute("expanded")
+       menuItem.setAttribute("collapsed", "")
+      } else {
+       menuItem.setAttribute('expanded', "");
+       menuItem.removeAttribute("collapsed");	
+      } 
+    }
+   } else {
+  const urlItem = linkItem.children[0];
+  if (urlItem){
+    const url = new URL(urlItem.getAttribute("href") + '?mode=list', urlItem.baseURI);
+
+  fetch(url.href, {
+        headers: {
+         'Accept': 'application/json'
+        }
+      })
+    .then((response) => {
+      if(response.ok)
+      {
+        return response.json();
+       }
+       else
+       {
+        let menuItem = document.createElement('menu');
+        menuItem.setAttribute('class', 'archive-items');
+        menuItem.setAttribute('expanded', "");
+        menuItem.removeAttribute("collapsed");
+
+        let li = document.createElement('div');
+        li.setAttribute('class', 'archive-list-item');
+        li.setAttribute('data-entry-index', 0);
+
+        let dil = document.createElement('div');
+        dil.setAttribute('class', 'item-link');
+        let name = document.createElement('p');
+        name.setAttribute('class', 'archive-item-link');
+        name.innerHTML = response.statusText;
+
+        dil.appendChild(name);
+
+        let clr = document.createElement('div');
+        clr.setAttribute('class', 'clearer');
+
+        li.appendChild(dil);
+        li.appendChild(clr);
+        menuItem.appendChild(li);
+
+        ul.appendChild(menuItem);
+        ul.setAttribute("archive-items-count", '?');
+
+        throw new Error(response.status);
+        }
+    })
+    .then((data) => {
+      let items = data.archive.entries;
+      itemsCount = data.archive.totalEntryCount;
+      let menuItem = document.createElement('menu');
+      menuItem.setAttribute('class', 'archive-items');
+      menuItem.setAttribute('expanded', "");
+      menuItem.removeAttribute("collapsed");
+
+      items.map(function(archiveItem) {
+        let li = document.createElement('div');
+        li.setAttribute('class', 'archive-list-item');
+        li.setAttribute('data-entry-index', archiveItem.entryIndex);
+
+        let dil = document.createElement('div');
+        dil.setAttribute('class', 'item-link');
+        let name = document.createElement('a');
+        name.setAttribute('class', 'archive-item-link');
+        name.innerHTML = archiveItem.name;
+
+        let dsz = document.createElement('div');
+        dsz.setAttribute('class', 'item-props');
+        if (archiveItem.type == "file"){
+          let sz = document.createElement('span');
+          sz.setAttribute('class', 'item-size');
+          sz.innerHTML = formatBytes(archiveItem.size);
+          dsz.appendChild(sz);
+         }
+
+        let clr = document.createElement('div');
+        clr.setAttribute('class', 'clearer');
+
+        dil.appendChild(name);
+
+        li.appendChild(dil);
+        li.appendChild(dsz);
+        li.appendChild(clr);
+        menuItem.appendChild(li);
+      });
+     ul.appendChild(menuItem);
+     ul.setAttribute("archive-items-count", itemsCount);
+    })
+    .catch(function(error) {
+      console.log(error);
+    });
+   }
+    }
+       })
+    })
+}
 
 
 [sha256.js|public]
@@ -2235,7 +2675,7 @@ $domReady(()=>{
     $toggle('delete-selection', $sel('.can-delete'))
     $click('#archive', ()=>
         mustSelect() && ask("Downloading many files as archive can be a lengthy operation, and the result is a TAR file. Continue?", ()=>
-            submit({ selection: getSelectedItemsName() }, "?mode=archive") ))
+            submit({ selection: getSelectedItemsName() }, "?mode=archive&recursive") ))
 
     $msel('#files .cannot-access .item-link img', x=>
 		x.insertAdjacentElement('afterend', $icon('lock', "No access") ))
@@ -2262,7 +2702,119 @@ $domReady(()=>{
     selectionChanged()
 })//$domReady
 
-function music(){ //C DJ BSD2License
-  var e=1,n=new Audio,o=[[]],c=0,r=[];
-  document.querySelectorAll("a[href]").forEach(function(t,e){
-     var n;[".mp3",".ogg",".m4a",".wma",".aac","flac",".Mp3",".MP3",".OGG",".M4A",".WMA",".AAC","FLAC"].indexOf(t.getAttribute("href").slice(-4))+1&&(o[0].push(t.getAttribute("href")),t.addEventListener("click",function(e){e.preventDefault(),i(t.getAttribute("href"))}),(n=document.querySelector('input[value="'+t.getAttribute("href")+'"]'))&&(n.checked=!0))}),"?shuffle"==location.search&&(e=!e),e&&(o[0]=o[0].sort(function(e,t){return.5-Math.random()}));var t,u=document.querySelector("#actions")||document.querySelector("#menu-bar")||document.querySelector("body"),a=document.createElement("button");function i(e){e.match(/m3u8?$/)?fetch(e).then(function(e){e.text().then(function(e){i(e.match(/^(?!#)(?!\s).*$/gm).map(encodeURI)[0])})}):(n.src=e,n.play(),document.title=decodeURI(e))}a.textContent="\u25BA",a.setAttribute("class","play"),a.onclick=function(){n.paused?(n.src||(n.src=(e?o[0]:t)[0]),n.play()):n.pause()},a.oncontextmenu=function(e){e.preventDefault(),n.onended()},o[0].length&&!document.querySelector("button.play")&&u.appendChild(a),n.onended=function(){var e=n.getAttribute("src");do{e=o[c][o[c].indexOf(e)+1];var t=document.querySelector('input[value="'+e+'"]')}while(t&&!t.checked);e?i(e):c?(c--,n.src=r[c],n.onended()):i(o[0][0])},n.onpause=function(){document.querySelector("button.play").textContent="\u25BA"},n.onplay=function(){document.querySelector("button.play").textContent="\u2759 \u2759"},o[0].length&&(window.onbeforeunload=function(e){localStorage.last=n.getAttribute("src")+"#t="+n.currentTime},t=localStorage.last.split("#t="),n.preload="none",n.src=(e?o[0]:t)[0],(t=1e3*location.search.slice(1))&&setTimeout(function(){document.querySelector("button.play").click()},t)),n.onerror=function(){n.onended()},"mediaSession"in navigator&&navigator.mediaSession.setActionHandler("nexttrack",function(){n.onended()})}
+function archiveContent(){
+  document.querySelectorAll("a[href].archive-spoiler").forEach(function(t,e){
+     var n;
+     t.addEventListener("click", function(e){
+        e.preventDefault() //,i(t.getAttribute("href"))
+  const linkItem = t.parentElement;
+  const ul = linkItem.parentElement;
+  let itemsCount = 0
+  if (ul.hasAttribute("archive-items-count")) {
+    var menuItems = ul.getElementsByClassName("archive-items")
+    if (menuItems.length > 0) {
+     menuItem = menuItems[0]
+     if (menuItem.hasAttribute("expanded")){
+       menuItem.removeAttribute("expanded")
+       menuItem.setAttribute("collapsed", "")
+      } else {
+       menuItem.setAttribute('expanded', "");
+       menuItem.removeAttribute("collapsed");	
+      } 
+    }
+   } else {
+  const urlItem = linkItem.children[0];
+  if (urlItem){
+    const url = new URL(urlItem.getAttribute("href") + '?mode=list', urlItem.baseURI);
+
+  fetch(url.href, {
+        headers: {
+         'Accept': 'application/json'
+        }
+      })
+    .then((response) => {
+      if(response.ok)
+      {
+        return response.json();
+       }
+       else
+       {
+        let menuItem = document.createElement('menu');
+        menuItem.setAttribute('class', 'archive-items');
+        menuItem.setAttribute('expanded', "");
+        menuItem.removeAttribute("collapsed");
+
+        let li = document.createElement('div');
+        li.setAttribute('class', 'archive-list-item');
+        li.setAttribute('data-entry-index', 0);
+
+        let dil = document.createElement('div');
+        dil.setAttribute('class', 'item-link');
+        let name = document.createElement('p');
+        name.setAttribute('class', 'archive-item-link');
+        name.innerHTML = response.statusText;
+
+        dil.appendChild(name);
+
+        let clr = document.createElement('div');
+        clr.setAttribute('class', 'clearer');
+
+        li.appendChild(dil);
+        li.appendChild(clr);
+        menuItem.appendChild(li);
+
+        ul.appendChild(menuItem);
+        ul.setAttribute("archive-items-count", '?');
+
+        throw new Error(response.status);
+        }
+    })
+    .then((data) => {
+      let items = data.archive.entries;
+      itemsCount = data.archive.totalEntryCount;
+      let menuItem = document.createElement('menu');
+      menuItem.setAttribute('class', 'archive-items');
+      menuItem.setAttribute('expanded', "");
+      menuItem.removeAttribute("collapsed");
+
+      items.map(function(archiveItem) {
+        let li = document.createElement('div');
+        li.setAttribute('class', 'archive-list-item');
+        li.setAttribute('data-entry-index', archiveItem.entryIndex);
+
+        let dil = document.createElement('div');
+        dil.setAttribute('class', 'item-link');
+        let name = document.createElement('a');
+        name.setAttribute('class', 'archive-item-link');
+        name.innerHTML = archiveItem.name;
+
+        let dsz = document.createElement('div');
+        dsz.setAttribute('class', 'item-props');
+        if (archiveItem.type == "file"){
+          let sz = document.createElement('span');
+          sz.setAttribute('class', 'item-size');
+          sz.innerHTML = formatBytes(archiveItem.size);
+          dsz.appendChild(sz);
+         }
+
+        let clr = document.createElement('div');
+        clr.setAttribute('class', 'clearer');
+
+        dil.appendChild(name);
+
+        li.appendChild(dil);
+        li.appendChild(dsz);
+        li.appendChild(clr);
+        menuItem.appendChild(li);
+      });
+     ul.appendChild(menuItem);
+     ul.setAttribute("archive-items-count", itemsCount);
+    })
+    .catch(function(error) {
+      console.log(error);
+    });
+   }
+    }
+       })
+    })
+}

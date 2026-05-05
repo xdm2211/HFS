@@ -60,12 +60,15 @@ type
     procedure showCancel();
     procedure hideCancel();
     procedure reset();
+    function  doProg(p: real): Boolean;
     end;
 
 implementation
 
 function max(a,b:integer):integer;
-begin if a > b then result:=a else result:=b end;
+begin
+  if a > b then result:=a else result:=b
+end;
 
 constructor TprogressForm.create;
 var
@@ -129,7 +132,9 @@ begin
 end; // constructor
 
 function TprogressForm.getVisible():boolean;
-begin result := frm.Visible end;
+begin
+  result := frm.Visible
+end;
 
 procedure TprogressForm.showCancel();
 begin
@@ -166,7 +171,9 @@ begin
 end;
 
 function TprogressForm.getCaption(): String;
-begin result := msgPnl.caption end;
+begin
+  result := msgPnl.caption
+end;
 
 procedure TprogressForm.setCaption(const x: String);
 var
@@ -199,13 +206,19 @@ prog.position:=round(x);
 end; // setGlobalPos
 
 function TprogressForm.getGlobalPos():real;
-begin result:=prog.position/prog.max end;
+begin
+  result:=prog.position/prog.max
+end;
 
 procedure TprogressForm.setPos(x:real);
-begin setGlobalPos(stack[length(stack)-1].ofs + x*partialLength ) end;
+begin
+  setGlobalPos(stack[length(stack)-1].ofs + x*partialLength )
+end;
 
 function TprogressForm.getPos():real;
-begin result:=getGlobalPos()/partialLength + stack[length(stack)-1].ofs end;
+begin
+  result:=getGlobalPos()/partialLength + stack[length(stack)-1].ofs
+end;
 
 procedure TprogressForm.push(sublength:real);
 var
@@ -231,10 +244,14 @@ setlength(stack, i);
 end; // pop
 
 procedure TprogressForm.onCancel(Sender: TObject);
-begin canceled:=TRUE end;
+begin
+  canceled:=TRUE
+end;
 
 procedure TprogressForm.onResize(Sender: TObject);
-begin cancelBtn.left:=(frm.width-cancelBtn.width) div 2-frm.borderWidth end;
+begin
+  cancelBtn.left:=(frm.width-cancelBtn.width) div 2-frm.borderWidth
+end;
 
 procedure TprogressForm.setSize;
 var
@@ -286,6 +303,18 @@ begin
 end;
 
 procedure TprogressForm.reset();
-begin prog.position:=0 end;
+begin
+  prog.position:=0
+end;
+
+function TprogressForm.doProg(p: real): Boolean;
+begin
+   Result := True;
+   if not Self.visible then
+     Exit;
+   Self.progress := p;
+   application.processMessages();
+   Result := not Self.cancelRequested;
+end;
 
 end.
